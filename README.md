@@ -21,6 +21,14 @@
 - 設計判断の記録（ADR）: [docs/adr/](docs/adr/README.md) — 3段構成・A分割・Vision LLM・専用DSL・層別組合せ・
   ロスレス圧縮・自己文書化・C範囲と検証・uv構成・匿名化 の10件
 
+## 入力にできる画像フォーマット
+A-1（読み取り）は Vision LLM が画像を見る工程なので PDF 以外も可（**コード変更不要**）:
+- PNG / JPEG / GIF(静止) / WebP … `a_render.py` を使わず直接読ませる
+- PDF … `make render SPEC=...`（pdftoppm で PNG 化）
+- TIFF / BMP / HEIC ほか … 同梱の `magick` で PNG 化してから読ませる
+
+B・C は A-1 の出力テキスト以降を扱うため、入力フォーマットに非依存。詳細は [docs/HANDBOOK.md 第8節](docs/HANDBOOK.md)。
+
 ## 実行（人間が手で動かす）
 - 一括: `make all`（= `bash scripts/run_all.sh`、lint→B→C→C広域）
 - 個別: `make lint` / `make build` / `make images` / `make images-pairwise`

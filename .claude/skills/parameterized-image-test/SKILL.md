@@ -10,13 +10,20 @@ B/C は決定的なスクリプト。各段に人間のレビューゲートが�
 
 ## 前提
 - 初回は `bash scripts/setup.sh`（brew + uv）。
-- 新しい仕様PDFは `specs/` に置く。引数 `<pdf>` 既定は `specs/spec_sample.pdf`。
+- 入力は仕様ページの **PDF または画像**。`specs/` に置く（既定 `specs/spec_sample.pdf`）。
+  対応入力（コード変更不要、詳細は docs/HANDBOOK.md 第8節）:
+  - PNG/JPEG/GIF(静止)/WebP → **a_render.py 不要**。画像を直接 Read して A-1 へ。
+  - PDF → `a_render.py`（pdftoppm で PNG 化、複数ページ対応）。
+  - TIFF/BMP/HEIC 等 → 直接は読めないので `magick 入力 出力.png` で PNG 化してから直接 Read。
 
 ## 手順
 
 ### A-1 読み取り（仕様 → 忠実な転記）
-1. `uv run python src/a_render.py <pdf>` で PNG 化（`out/1a_extract/<stem>-N.png`）。
-2. その PNG を **Read で開いて画像を見て**、`prompts/a1_read.md` の指示（**推論禁止・忠実転記**）に従い、
+1. 入力を A-1 が読める PNG/JPEG にする:
+   - PDF: `uv run python src/a_render.py <pdf>` → `out/1a_extract/<stem>-N.png`
+   - すでに PNG/JPEG/GIF/WebP: そのまま次へ（変換不要）
+   - TIFF/HEIC 等: `magick <入力> out/1a_extract/<name>.png`
+2. その画像を **Read で開いて見て**、`prompts/a1_read.md`（**推論禁止・忠実転記**）に従い
    `out/1a_extract/raw_extract.md` を作成する。
 3. ユーザーにレビューを促す（観点: 誤読・取りこぼし）。
 

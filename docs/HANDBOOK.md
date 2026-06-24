@@ -178,7 +178,26 @@ make images-pairwise  # 広域スイート → out/3_images_pairwise/（16bit/LZ
 
 ---
 
-## 8. もっと知るには
+## 8. 入力にできる画像フォーマット（コード変更なし）
+
+A-1 は「**画像を見て転記する**」工程なので、入力はPDFに限りません。現状のコードのまま、次の3通りが使えます。
+（B・C は A-1 の出力テキスト `raw_extract.md` 以降を扱うので、**入力フォーマットに一切依存しません**。違うのは A-1 だけ。）
+
+| 区分 | 具体的な形式 | やり方（コード変更なし） |
+|---|---|---|
+| ① そのまま Vision LLM で読める | **PNG / JPEG(JPG) / GIF(静止) / WebP** | `a_render.py` を**使わず**、その画像を直接 A-1 で読ませる（エージェントなら Read、APIなら画像ブロック）。レンダリング不要。 |
+| ② PDF（現状の既定経路） | **PDF**（複数ページ・ベクタPDFも可） | `make render SPEC=specs/あなたの.pdf`（内部で pdftoppm が 300dpi で PNG 化。1ページ=1PNG）。今回のサンプルはこれ。 |
+| ③ 上記以外のラスタ形式 | **TIFF / BMP / HEIC（libheif対応時）** ほか ImageMagick が扱う形式 | 同梱の ImageMagick で 1 回 PNG 化してから①として読む。例: `magick spec.tiff spec.png`（`magick` はステージC用に導入済み）。プロジェクトのコードは触らない。 |
+
+**モデル側の制約（ここは超えられない）:**
+- Claude の vision が**直接**受け付けるのは PNG / JPEG / GIF / WebP。TIFF・HEIC・SVG などは直接不可なので、③のように PNG/JPEG へ変換してから渡す。
+- SVG 等のベクタは PNG か PDF にラスタライズしてから（`magick` やブラウザで）。
+- 1枚あたりのサイズ・寸法には上限があり、長辺が大きすぎると内部で縮小される。**細かい仕様表は文字が読める解像度**で（必要なら領域を分割して複数回読む）。高解像度ほど転記ミスが減る。
+
+> まとめ: 「入力が何の画像か」は **A-1 の読み取りだけ**の問題。PNG/JPEG等はそのまま、PDFは `a_render.py`、
+> その他は `magick` で PNG 化、のいずれかで A-1 に渡せば、B・C は無改造でそのまま動きます。
+
+## 9. もっと知るには
 - まとめ: [README.md](../README.md)
 - 設計の理由(ADR): [docs/adr/](adr/README.md)
 - 設計プラン全文: [docs/plan.md](plan.md)
