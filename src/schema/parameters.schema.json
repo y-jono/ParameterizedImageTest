@@ -1,0 +1,282 @@
+{
+  "$defs": {
+    "Limits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_dimension": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Dimension"
+        },
+        "max_file_size": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max File Size"
+        }
+      },
+      "title": "Limits",
+      "type": "object"
+    },
+    "LookupSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "title": "From",
+          "type": "string"
+        },
+        "map": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Map",
+          "type": "object"
+        }
+      },
+      "required": [
+        "from",
+        "map"
+      ],
+      "title": "LookupSpec",
+      "type": "object"
+    },
+    "Oracle": {
+      "additionalProperties": false,
+      "properties": {
+        "hit_policy": {
+          "const": "first",
+          "default": "first",
+          "title": "Hit Policy",
+          "type": "string"
+        },
+        "rules": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "otherwise": {
+          "enum": [
+            "usable",
+            "unusable"
+          ],
+          "title": "Otherwise",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rules",
+        "otherwise"
+      ],
+      "title": "Oracle",
+      "type": "object"
+    },
+    "Parameter": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "independent",
+            "derived",
+            "coupled"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "values": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Values"
+        },
+        "lookup": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LookupSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "plus_if": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlusIf"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "expr": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expr"
+        },
+        "group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Group"
+        },
+        "partitions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Partitions"
+        }
+      },
+      "required": [
+        "name",
+        "kind"
+      ],
+      "title": "Parameter",
+      "type": "object"
+    },
+    "PlusIf": {
+      "additionalProperties": false,
+      "properties": {
+        "when": {
+          "title": "When",
+          "type": "string"
+        },
+        "add": {
+          "title": "Add",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "when",
+        "add"
+      ],
+      "title": "PlusIf",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "source": {
+      "title": "Source",
+      "type": "string"
+    },
+    "parameters": {
+      "items": {
+        "$ref": "#/$defs/Parameter"
+      },
+      "title": "Parameters",
+      "type": "array"
+    },
+    "relations": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Relations",
+      "type": "array"
+    },
+    "interactions": {
+      "default": [],
+      "items": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Interactions",
+      "type": "array"
+    },
+    "constraints": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Constraints",
+      "type": "array"
+    },
+    "oracle": {
+      "$ref": "#/$defs/Oracle"
+    },
+    "limits": {
+      "$ref": "#/$defs/Limits",
+      "default": {
+        "max_dimension": null,
+        "max_file_size": null
+      }
+    },
+    "notes": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Notes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "source",
+    "parameters",
+    "oracle"
+  ],
+  "title": "parameters.yaml (A-2 因果モデル)",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

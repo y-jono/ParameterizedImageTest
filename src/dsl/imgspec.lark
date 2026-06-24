@@ -1,0 +1,65 @@
+// imgspec DSL — 可読性最優先のテスト仕様記述言語
+// 用途: constraints / oracle の条件、relations / derived の算術式。
+// 設計方針: LLMは式の「起草」のみ。解釈はこの文法でパースし、決定的に評価する。
+//
+// 語彙はこれだけ:
+//   比較   : is / is not / in / = / != / <> / > / < / >= / <=
+//   論理   : and / or / not / ( )
+//   算術   : + - * / ( )
+//   ルール : when <条件> then <条件 | usable | unusable>
+//   代入   : <名前> = <算術式>        (relations / derived expr)
+
+%import common.SIGNED_NUMBER -> NUMBER
+%import common.ESCAPED_STRING -> STRING
+%import common.WS
+%ignore WS
+
+// --- 複数のエントリポイント（文脈ごとに parse 時 start を指定） ---
+start_rule:       "when" condition "then" then_part
+start_condition:  condition
+start_assignment: NAME "=" arith
+start_arith:      arith
+
+?then_part: verdict | condition
+verdict: "usable"   -> usable
+       | "unusable" -> unusable
+
+// --- 条件（真偽式） ---
+?condition: or_expr
+?or_expr: and_expr
+        | or_expr "or" and_expr     -> or_op
+?and_expr: not_expr
+         | and_expr "and" not_expr  -> and_op
+?not_expr: comparison
+         | "not" not_expr           -> not_op
+         | "(" condition ")"
+
+comparison: operand "is" "not" operand     -> ne
+          | operand "is" operand           -> eq
+          | operand "!=" operand           -> ne
+          | operand "<>" operand           -> ne
+          | operand "=" operand            -> eq
+          | operand ">=" operand           -> ge
+          | operand "<=" operand           -> le
+          | operand ">" operand            -> gt
+          | operand "<" operand            -> lt
+          | operand "in" "[" arglist "]"   -> in_op
+
+arglist: operand ("," operand)*
+
+operand: NUMBER -> number
+       | STRING -> string
+       | NAME   -> name
+
+// --- 算術（formula / relations 右辺） ---
+?arith: arith "+" term   -> add
+      | arith "-" term   -> sub
+      | term
+?term: term "*" factor   -> mul
+     | term "/" factor   -> div
+     | factor
+?factor: NUMBER          -> number
+       | NAME            -> name
+       | "(" arith ")"
+
+NAME: /[A-Za-z_][A-Za-z0-9_]*/
