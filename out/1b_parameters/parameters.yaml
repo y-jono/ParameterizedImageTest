@@ -1,0 +1,85 @@
+# ============================================================================
+# A-2 因果モデル（parameters.yaml） — このファイルだけで意味が分かる凡例:
+#   parameters[].kind:
+#     independent = 自由に選べる軸（組合せ対象）
+#     derived     = 他から計算で決まる（軸にしない／lookup か expr で算出）
+#     coupled     = 連動グループの一員（方程式で拘束／partitions で同値・境界）
+#   values     = 取りうる値    lookup = 写像(from の値→数)    plus_if = 条件付き加算
+#   expr       = 算術式(DSL)   partitions = 同値/境界の代表値  group = 連動グループ名
+#   relations  = 連動の拘束式(DSL代入)。右辺を一方向に評価するのみ（algebraic solving はしない）
+#   interactions = 全網羅したい強相互作用ペア（取りこぼすと危険）
+#   constraints = 不可能組合せの除去(DSL: when 条件 then 条件)
+#   oracle     = 期待結果(DSL: when 条件 then usable|unusable, 上から first-match, 最後は otherwise)
+#   limits     = 数値オラクルの根拠（仕様に数値があれば。無ければ null）
+#   ※ YAMLの罠回避のため none/yes/no 等の値はクォート、または present/absent 等の別語を使用。
+# ============================================================================
+source: "out/1a_extract/raw_extract.md（画像ファイル仕様ページ）"
+
+parameters:
+  # --- 独立因子（自由に選べる軸） ---
+  - {name: format,             kind: independent, values: [JPEG, TIFF, PSD]}        # ファイル形式
+  - {name: color_mode,         kind: independent, values: [RGB, CMYK, Grayscale]}   # カラーモード
+  - {name: bit_depth,          kind: independent, values: [8, 16]}                  # ビット深度
+  - {name: compression,        kind: independent, values: ["none", "LZW"]}          # 圧縮(TIFF)
+  - {name: alpha,              kind: independent, values: [present, absent]}        # αチャンネル有無
+  - {name: icc_profile,        kind: independent, values: [embedded, absent]}       # ICCプロファイル
+  - {name: platform_quicktime, kind: independent, values: [installed, absent]}      # QuickTime(PSD可否に影響)
+
+  # --- 派生（計算で決まる。軸にしない） ---
+  - name: channels            # チャンネル数 = カラーモード由来 + α
+    kind: derived
+    lookup: {from: color_mode, map: {Grayscale: 1, RGB: 3, CMYK: 4}}
+    plus_if: {when: "alpha is present", add: 1}
+  - name: compression_ratio   # 概算の圧縮率（file_size 推定に使用。LZWは概算）
+    kind: derived
+    lookup: {from: compression, map: {"none": 1, "LZW": 2}}
+  - {name: file_size, kind: derived, expr: "width * height * channels * (bit_depth / 8) / compression_ratio"}  # 概算バイト数
+
+  # --- 連動グループ geometry（physical = pixels / resolution で拘束） ---
+  - {name: width,      kind: coupled, group: geometry, partitions: [1, 4000, 30000]}  # px
+  - {name: height,     kind: coupled, group: geometry, partitions: [1, 3000, 30000]}  # px
+  - {name: resolution, kind: coupled, group: geometry, partitions: [72, 350, 720]}    # dpi
+
+relations:            # 連動の拘束式（情報として保持。右辺を一方向に評価するのみ＝代入。逆算はしない）
+  - "physical_w_inch = width / resolution"
+  - "physical_h_inch = height / resolution"
+
+interactions:         # 強相互作用ペア（フル網羅）
+  - [channels, bit_depth]      # 16bit×多チャンネル など形式対応が破綻しやすい境目
+  - [format, compression]      # LZW は TIFF のみ等、形式依存が強い
+  - [color_mode, icc_profile]  # ICC は RGB のみ
+
+constraints:          # 不可能組合せの除去（when 条件 then 条件）
+  - "when format is JPEG then bit_depth is 8"          # JPEGは8bitのみ
+  - "when format is JPEG then compression is none"     # JPEGはLZW不可
+  - "when format is PSD then bit_depth is 8"           # PSDは8bitのみ
+  - "when format is PSD then compression is none"      # PSDはLZW不可
+  - "when compression is LZW then format is TIFF"      # LZWはTIFFのみ
+  - "when alpha is present then format is TIFF"        # αを持てるのはTIFFのみ(JPEG不可/PSDは対象外)
+  - "when icc_profile is embedded then color_mode is RGB"        # ICC添付はRGB色空間
+  - "when icc_profile is embedded then format in [JPEG, TIFF]"   # ICC添付はJPEG/TIFFで実施
+
+oracle:               # 期待結果（上から first-match）
+  hit_policy: first
+  rules:
+    # --- 明示的に「使用できない」 ---
+    - "when format is JPEG and color_mode is CMYK then unusable"      # JPEG(CMYK) 不可
+    - "when format is TIFF and alpha is present then unusable"        # TIFF(αチャンネル付き) 不可
+    - "when format is TIFF and color_mode is CMYK then unusable"      # TIFF(CMYK) 不可
+    - "when format is TIFF and color_mode is Grayscale then unusable" # TIFF(グレースケール) 不可
+    # --- 明示的に「使用できる」 ---
+    - "when format is JPEG and color_mode is RGB and bit_depth is 8 then usable"  # JPEG(RGB)8bit
+    - "when format is TIFF and color_mode is RGB then usable"                     # TIFF(RGB)8/16bit, none/LZW
+    - "when format is PSD and bit_depth is 8 and platform_quicktime is installed then usable"  # PSD 8bit(QuickTime)
+  otherwise: unusable  # 上記いずれにも該当しないものは不可（使用可一覧に無い組合せ）
+
+limits:               # 仕様に寸法/サイズの数値上限は明記されていない
+  max_dimension: null
+  max_file_size: null
+
+notes:
+  - "製品名は raw_extract で（アプリ名）に匿名化済み。OS は platform_quicktime（QuickTime有無）で代理。"
+  - "【要レビュー/推測】PSD のカラーモード制限は仕様に明記なし。本モデルは『PSD 8bit + QuickTime → usable』を色モード非依存で解釈。PSD(CMYK/Gray)を不可とすべきなら oracle に追加する。"
+  - "【要レビュー/推測】JPEG(Grayscale) は使用可一覧に無いため otherwise=unusable と解釈。"
+  - "compression_ratio は file_size 概算用の近似値（LZW=2 は粗い見積り）。実寸法上限が判明したら limits に設定し oracle に file_size ルールを追加可能。"
+  - "モノクロ印刷（[自動画像調整]→[モノクローム]）は印刷機能の話で取り込み可否とは別軸。将来の軸候補。"
