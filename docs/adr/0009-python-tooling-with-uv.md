@@ -12,7 +12,8 @@ Python プロジェクトの依存・実行管理方式の選択。C の生成�
   **pip / venv / requirements.txt は使わない**。
 - 外部ツール: **ImageMagick + exiftool + PICT**（組合せ）、PDFレンダリングは **poppler(pdftoppm)**（macOS は qlmanage 代替）。
   いずれも `brew install`。
-- Python 依存: lark, sympy, pydantic, jsonschema, allpairspy, anthropic, PyYAML, pandas。
+- Python 依存: lark, pydantic, jsonschema, allpairspy, anthropic, PyYAML, pandas。
+  （当初入れていた sympy は relations を一方向評価に確定したため未使用となり削除。ADR-0005 参照）
 
 ## Alternatives considered
 - pip + venv + requirements.txt: 一般的だが解決が遅く lock も別管理。ユーザー要望により却下。

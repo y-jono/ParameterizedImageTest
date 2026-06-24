@@ -7,7 +7,8 @@
   3. 名前解決       : 式が参照する識別子が、既知のパラメータ/値/関係/limits のいずれかか（タイポ検出）
   4. lookup 整合    : derived.lookup の from が実在し、map のキーがその値域に収まるか
   5. interactions   : 参照ペアが実在パラメータか
-  6. オラクル網羅/矛盾: 有効空間を列挙し、到達不能ルール・判定分布を報告（otherwise で網羅保証）
+  6. オラクル網羅/矛盾: 有効空間を列挙し、(a) otherwise で網羅を保証、(b) 到達不能ルールを警告、
+                       (c) 同一ケースに複数ルールが一致し判定が割れる「矛盾」を警告（first-match で隠れる重複）
 
 使い方:
     uv run python src/a2_lint.py out/1b_parameters/parameters.yaml
@@ -33,7 +34,7 @@ from derive import (  # noqa: E402
     compile_constraints,
     compile_oracle,
     compute_derived,
-    oracle_matched_index,
+    oracle_all_matches,
     representative_geometry,
     valid_independent_space,
 )
@@ -172,9 +173,17 @@ def lint(path: str) -> int:
     valid = valid_independent_space(model, constraints)
     fired = set()
     usable = unusable = otherwise_cnt = 0
+    contradictions: dict = {}  # (i, j) -> 競合した最初の例（env）
     for env in valid:
         env2 = compute_derived(model, {**env, **geo})
-        idx = oracle_matched_index(oracle_rules, env2)
+        matched = oracle_all_matches(oracle_rules, env2)
+        # 矛盾検出: 同一ケースに複数ルールが一致し、判定が割れている（first-match で隠れる）
+        if matched and len({oracle_rules[m].verdict for m in matched}) > 1:
+            first = matched[0]
+            for m in matched[1:]:
+                if oracle_rules[m].verdict != oracle_rules[first].verdict:
+                    contradictions.setdefault((first, m), env)
+        idx = matched[0] if matched else -1
         if idx < 0:
             otherwise_cnt += 1
             verdict = model.oracle.otherwise
@@ -195,6 +204,15 @@ def lint(path: str) -> int:
     for i, vr in enumerate(oracle_rules):
         if i not in fired:
             rep.warn(f"到達不能なoracleルール #{i+1}: {model.oracle.rules[i]!r}（先行ルールに覆われている可能性）")
+
+    # 矛盾（同一ケースに複数ルールが一致し判定が割れる。first-match で隠れるが意図しない可能性）
+    for (i, j), env in sorted(contradictions.items()):
+        ex = ", ".join(f"{k}={v}" for k, v in env.items())
+        rep.warn(
+            f"oracle 重複: ルール #{i+1}({oracle_rules[i].verdict}) と #{j+1}({oracle_rules[j].verdict}) が"
+            f"同一ケースで一致し判定が割れます（first-match で #{i+1} 採用）。例: {ex}。"
+            f"→ 例外を先に置く意図ならOK。意図しない矛盾なら順序か条件を見直してください。"
+        )
 
     if len(valid) == 0:
         rep.err("有効な組合せが0件です（constraints が過剰）")

@@ -1,5 +1,8 @@
 # ParameterizedImageTest
 
+> 🔰 **はじめての方は [docs/HANDBOOK.md](docs/HANDBOOK.md)（新人向け平易ガイド）から。**
+> 最短: `bash scripts/setup.sh` → `make all`（`make help` でコマンド一覧）。
+
 画像レイアウトアプリ向けの **パラメタライズド画像テスト基盤**。
 仕様ドキュメント（画像ファイル仕様ページ）を起点に、テストパラメータ → ディシジョンテーブル →
 入力画像 を **3段パイプライン** で生成する。各段は人間がレビュー・編集できる中間成果物を出し、
@@ -13,9 +16,17 @@
 ```
 
 ## ドキュメント
+- **新人向けハンドブック（まずこれ）**: [docs/HANDBOOK.md](docs/HANDBOOK.md) — 用語のやさしい解説と手で動かす手順
 - 設計プラン（設計時スナップショット）: [docs/plan.md](docs/plan.md)
 - 設計判断の記録（ADR）: [docs/adr/](docs/adr/README.md) — 3段構成・A分割・Vision LLM・専用DSL・層別組合せ・
   ロスレス圧縮・自己文書化・C範囲と検証・uv構成・匿名化 の10件
+
+## 実行（人間が手で動かす）
+- 一括: `make all`（= `bash scripts/run_all.sh`、lint→B→C→C広域）
+- 個別: `make lint` / `make build` / `make images` / `make images-pairwise`
+- 健全性: `make test`（= `bash scripts/check.sh`、DSLテスト + lint）
+- 一覧: `make help`
+- エージェント（Claude Code）利用時は A の自動化スキル `parameterized-image-test`（`.claude/skills/`）も利用可
 
 ## セットアップ
 ```bash
@@ -73,7 +84,7 @@ uv run python src/c_generate.py --table out/2_decision_table/pairwise.csv \
 
 ## 専用DSL（imgspec, `src/dsl/imgspec.lark`）
 可読性最優先・低学習コスト。LLM は式の起草のみ、解釈はパーサが決定的に行う。
-- 比較: `is` / `is not` / `in [..]` / `> < >= <=`
+- 比較: `is` / `is not` / `in [..]` / `> < >= <=`（`is`=`=`、`is not`=`!=`=`<>` は同義。可読性のため `is`/`is not` 推奨）
 - 論理: `and` / `or` / `not` / `( )`
 - 算術: `+ - * / ( )`
 - ルール: `when <条件> then <条件 | usable | unusable>`

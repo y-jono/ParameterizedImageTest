@@ -259,16 +259,25 @@ def write_constraints(model, outdir):
     all_combos = [dict(zip(names, c)) for c in itertools.product(*domains)]
     rows = []
     from dsl import eval_condition
+    removed_any = set()  # 全制約のいずれかで落ちた組合せ（重複排除した正味）
     for dsl_text, c in zip(model.constraints, constraints):
         pruned = [e for e in all_combos
                   if eval_condition(c.antecedent, e) and not eval_condition(c.consequent, e)]
+        for e in pruned:
+            removed_any.add(tuple(e[k] for k in names))
         ex = pruned[0] if pruned else None
         ex_s = ", ".join(f"{k}={ex[k]}" for k in names if k in ex) if ex else "—"
         rows.append([f"`{dsl_text}`", len(pruned), ex_s])
+    full = len(all_combos)
+    net_removed = len(removed_any)
     body = (
         "# ③ 制約（不可能組合せの除去）\n"
-        "# 凡例: dsl=制約式 / prunes=この制約が独立空間から落とす組合せ数 / example=落ちる組合せの一例。\n"
+        "# 凡例: dsl=制約式 / prunes=その制約**単体**が全独立空間から落とす組合せ数 / example=落ちる組合せの一例。\n"
+        "# 注意: prunes は各制約を**独立に**全空間に当てた数です。制約どうしは重複し得るため、\n"
+        "#       **合計しても正味の除外数にはなりません**（下の正味で確認してください）。\n"
         "# レビュー: 制約の正しさ（落としてよい組合せか）。\n\n"
+        f"- full（全独立空間）= {full} / 正味除外（いずれかの制約で落ちる, 重複排除）= {net_removed} / "
+        f"valid（残る有効空間）= {full - net_removed}\n\n"
         + md_table(["dsl", "prunes", "example"], rows) + "\n"
     )
     w(outdir / "constraints.md", body)
@@ -312,8 +321,8 @@ def write_profiles_csv(model, profiles, outdir):
     cols = ["profile", "level"] + [p.name for p in model.coupled()]
     path = outdir / "profiles.csv"
     with path.open("w", newline="", encoding="utf-8") as f:
+        f.write("# geometry 代表プロファイル。level=min/typ/max、以降は連動各次元の実値\n")
         wr = csv.writer(f)
-        wr.writerow(["# geometry 代表プロファイル。level=min/typ/max, 以降は連動各次元の実値"])
         wr.writerow(cols)
         for pr in profiles:
             wr.writerow([pr["profile"], pr["level"]] + [pr[p.name] for p in model.coupled()])
@@ -325,8 +334,8 @@ def write_decision_table(model, rules, metrics, outdir):
     # CSV
     csv_path = outdir / "decision_table.csv"
     with csv_path.open("w", newline="", encoding="utf-8") as f:
+        f.write(f"# 全有効空間({metrics['valid']}件)を don't-care({DC})圧縮した最小ルール。action=oracle判定。\n")
         wr = csv.writer(f)
-        wr.writerow([f"# 全有効空間({metrics['valid']}件)を don't-care({DC})圧縮した最小ルール。action=oracle判定。"])
         wr.writerow(["rule"] + names + ["action"])
         for i, (cube, action) in enumerate(rules, 1):
             wr.writerow([f"R{i}"] + list(cube) + [action])
@@ -341,6 +350,11 @@ def write_decision_table(model, rules, metrics, outdir):
         f"# metrics: full={metrics['full']} valid={metrics['valid']} compressed={metrics['compressed']} pairwise={metrics['pairwise']}\n\n"
         + md_table(["rule"] + names + ["action"], rows) + "\n"
     )
+    if model.notes:
+        body += ("\n## 前提・仮定（action はこれらに依存／要レビュー）\n"
+                 "action 判定は A-2 `parameters.yaml` の以下の前提に基づきます。"
+                 "「要レビュー/推測」を含むものは、この表および生成テストにも伝搬しています:\n"
+                 + "\n".join(f"- {n}" for n in model.notes) + "\n")
     w(outdir / "decision_table.md", body)
 
 
@@ -353,8 +367,8 @@ def write_pairwise_csv(model, header, data, profiles, outdir):
     cols = [p.name for p in model.independent()] + coupled + derived_cols + ["geometry", "action"]
     path = outdir / "pairwise.csv"
     with path.open("w", newline="", encoding="utf-8") as f:
+        f.write("# PICT covering set: pairwise + 強相互作用フル網羅。geometry は代表プロファイル。action=oracle判定。\n")
         wr = csv.writer(f)
-        wr.writerow(["# PICT covering set: pairwise + 強相互作用フル網羅。geometry は代表プロファイル。action=oracle判定。"])
         wr.writerow(cols)
         for row in data:
             env = {p.name: cast(p.name, row[p.name]) for p in model.independent()}

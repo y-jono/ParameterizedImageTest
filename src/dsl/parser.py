@@ -227,7 +227,16 @@ def parse_assignment(text: str) -> Assignment:
 # 評価
 # --------------------------------------------------------------------------- #
 def _resolve(op: Operand, env: dict):
-    """operand を値に解決。Name は env にあれば値、無ければ文字列リテラル。"""
+    """operand を値に解決する。
+
+    設計意図（重要）: 比較の右辺などに現れる **裸の語** は、DSL では「値リテラル」と「変数参照」を
+    記号上は区別しない。そこで `Name` は env にあればその値、無ければ **文字列リテラル** として扱う。
+    これにより `format is JPEG` の `JPEG`（env に無い＝値リテラル "JPEG"）と
+    `format`（env にある＝変数）の両方が同じ規則で自然に動く。
+
+    トレードオフ: 綴り間違い（例 `format`）も「文字列リテラル」とみなされ、ここではエラーにならない。
+    タイポ検出は評価時ではなく **a2_lint.py（referenced_names を既知の名前集合と突合）** が担う。
+    """
     if isinstance(op, Num):
         return op.value
     if isinstance(op, Str):

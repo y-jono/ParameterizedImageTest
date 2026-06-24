@@ -213,6 +213,7 @@
     }
   },
   "additionalProperties": false,
+  "description": "parameters.yaml の型付きモデル。\n\n重要: 生成される JSON Schema（parameters.schema.json）は **構造の目安** にすぎず、\n各 parameter の kind 別必須フィールド（independent→values, derived→lookup|expr,\ncoupled→group+partitions）や DSL 式の妥当性・oracle の網羅/矛盾は表現しません。\nそれらは pydantic の検証（このモデル）と `src/a2_lint.py` が **権威ある検証** として担います。\nJSON Schema 単体で valid でも a2_lint で不合格になり得ます。必ず a2_lint を通してください。",
   "properties": {
     "source": {
       "title": "Source",
@@ -276,7 +277,7 @@
     "parameters",
     "oracle"
   ],
-  "title": "parameters.yaml (A-2 因果モデル)",
+  "title": "parameters.yaml (A-2 因果モデル) — 構造の目安。権威ある検証は src/a2_lint.py",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema"
 }

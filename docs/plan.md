@@ -6,6 +6,8 @@
   代表例: DSL値の YAML 罠回避（alpha=present/absent, icc=embedded/absent,
   platform_quicktime=installed/absent, compression="none"/"LZW"）、派生 compression_ratio の追加、
   本サンプルでは limits 未設定のため oracle の file_size ルールは不採用。
+- 本文中に「relations は sympy で任意変数を解く」とあるが、実装は **一方向の代入評価のみ**（逆算なし）。
+  未使用の sympy 依存は削除済み（ADR-0005 / ADR-0009 参照）。
 -->
 
 # パラメタライズド画像テスト基盤（A・B・C）設計プラン

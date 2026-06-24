@@ -34,20 +34,25 @@ from derive import (  # noqa: E402
 )
 from schema.models import ParametersModel, load_parameters  # noqa: E402
 
-FIELDS = ["format", "color_mode", "bit_depth", "compression", "alpha", "icc_profile"]
+# 画像ファイルに実際に反映され、生成後に読み戻して検証できる軸。
+IMAGE_FIELDS = ["format", "color_mode", "bit_depth", "compression", "alpha", "icc_profile"]
+# 注: platform_quicktime は「OS/QuickTime の環境条件」であり画像ファイルには現れない。
+#     しかし可否判定(oracle)には効くため、独立因子の全体（model.independent()）で
+#     ルールをインスタンス化・突合する。IMAGE_FIELDS だけで突合すると platform_quicktime を
+#     取りこぼし、PSD ルール(R5/R10)の代表が由来ルールと食い違う（過去のバグ）。
 DC = "*"
 
 
 def load_rules(path: Path, names: List[str]) -> List[Dict]:
     """decision_table.csv（don't-care 圧縮）/ pairwise.csv（具体）どちらも読める。
 
-    FIELDS 列と action 列を名前で拾う。rule 列があれば ID に使い、無ければ連番。
+    `names`（独立因子の全列）と action 列を名前で拾う。rule 列があれば ID に使い、無ければ連番。
     """
     lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if not ln.startswith("#")]
     reader = csv.DictReader(lines)
     rules = []
     for i, row in enumerate(reader, 1):
-        cube = {f: row[f] for f in FIELDS}
+        cube = {f: row[f] for f in names}
         rid = row.get("rule") or f"C{i}"
         rules.append({"id": rid, "cube": cube, "action": row.get("action", "")})
     return rules
@@ -97,24 +102,30 @@ def main(argv=None) -> int:
     args.outdir.mkdir(parents=True, exist_ok=True)
     model = load_parameters(args.params)
     oracle_rules = compile_oracle(model)
-    names = [p.name for p in model.independent()]
-    rules = load_rules(args.table, names)
+    indep_names = [p.name for p in model.independent()]   # platform_quicktime も含む全独立因子
+    rules = load_rules(args.table, indep_names)
     valids = valid_combos(model)
 
     manifest: List[Dict] = []
     n_match = n_mismatch = n_manual = 0
+    n_rule_conflict = 0
     print(f"== C 画像生成（{len(rules)} ルール）==")
 
     for r in rules:
         case = instantiate(r["cube"], valids, model)
-        intended = {k: case[k] for k in FIELDS}
-        # sanity: 具体ケースの判定が由来ルールの action と一致するはず
+        intended = {k: case[k] for k in indep_names}       # 全独立因子（manifest 記録用）
+        # 由来ルールの action と、具体ケースを oracle で再評価した verdict が一致するか検証。
         env2 = compute_derived(model, case)
         verdict = oracle_verdict(oracle_rules, model.oracle.otherwise, env2)
+        rule_ok = (not r["action"]) or (verdict == r["action"])
+        if not rule_ok:
+            n_rule_conflict += 1
+            print(f"  WARN: {r['id']} action={r['action']} だが具体ケースの判定={verdict}（インスタンス化の不整合）")
 
         cid = f"TC{len(manifest)+1:04d}"
-        row = {"case_id": cid, "source_rule": r["id"], "expected": verdict}
-        row.update({f"intended_{k}": intended[k] for k in FIELDS})
+        row = {"case_id": cid, "source_rule": r["id"], "expected": verdict,
+               "rule_action": r["action"], "rule_consistent": "true" if rule_ok else "false"}
+        row.update({f"intended_{k}": intended[k] for k in indep_names})
 
         if intended["format"] == "PSD":
             n_manual += 1
@@ -122,7 +133,7 @@ def main(argv=None) -> int:
             row["file"] = fname
             row["generation"] = "manual"
             row["match"] = "n/a"
-            for k in FIELDS:
+            for k in IMAGE_FIELDS:
                 row[f"actual_{k}"] = ""
             print(f"  {cid} {fname}  -> MANUAL (PSDは手動作成)")
         else:
@@ -133,13 +144,13 @@ def main(argv=None) -> int:
             row["generation"] = "auto"
             if not ok:
                 row["match"] = "GEN_FAIL"
-                for k in FIELDS:
+                for k in IMAGE_FIELDS:
                     row[f"actual_{k}"] = ""
                 n_mismatch += 1
                 print(f"  {cid} {fname}  -> GEN FAIL: {msg}")
             else:
                 v = image_spec.verify(out_path, intended)
-                for k in FIELDS:
+                for k in IMAGE_FIELDS:
                     row[f"actual_{k}"] = v["actual"][k]
                 row["match"] = "true" if v["match"] else "false"
                 row["_checks"] = v["checks"]
@@ -152,59 +163,74 @@ def main(argv=None) -> int:
                     print(f"  {cid} {fname}  -> MISMATCH {bad}")
         manifest.append(row)
 
-    write_manifest(args.outdir / "manifest.csv", manifest)
+    write_manifest(args.outdir / "manifest.csv", manifest, indep_names)
     write_report(args.outdir / "verify_report.md", manifest,
-                 {"match": n_match, "mismatch": n_mismatch, "manual": n_manual})
+                 {"match": n_match, "mismatch": n_mismatch, "manual": n_manual,
+                  "rule_conflict": n_rule_conflict}, model)
 
-    print(f"\n生成: auto一致={n_match}, 不一致={n_mismatch}, PSD手動={n_manual}")
-    return 1 if n_mismatch else 0
+    print(f"\n生成: auto一致={n_match}, 不一致={n_mismatch}, PSD手動={n_manual}, "
+          f"ルール不整合={n_rule_conflict}")
+    return 1 if (n_mismatch or n_rule_conflict) else 0
 
 
-def write_manifest(path: Path, manifest: List[Dict]):
-    cols = (["case_id", "file", "source_rule", "expected", "generation", "match"]
-            + [f"intended_{k}" for k in FIELDS] + [f"actual_{k}" for k in FIELDS])
+def write_manifest(path: Path, manifest: List[Dict], indep_names: List[str]):
+    cols = (["case_id", "file", "source_rule", "rule_action", "rule_consistent", "expected",
+             "generation", "match"]
+            + [f"intended_{k}" for k in indep_names] + [f"actual_{k}" for k in IMAGE_FIELDS])
     with path.open("w", newline="", encoding="utf-8") as f:
+        f.write("# intended=要求値(全独立因子) / actual=読み戻し値(画像から検証可能な軸のみ) / "
+                "match=actual が intended と全一致か / expected=具体ケースを oracle で再評価した判定 / "
+                "rule_action=由来ルールの判定 / rule_consistent=expected と rule_action が一致か / "
+                "source_rule=由来ルールID / generation=auto|manual\n")
         wr = csv.writer(f)
-        wr.writerow(["# intended=要求値 / actual=読み戻し値 / match=全フィールド一致 / "
-                     "expected=oracle判定(usable|unusable) / source_rule=由来ルールID / generation=auto|manual"])
         wr.writerow(cols)
         for r in manifest:
             wr.writerow([r.get(c, "") for c in cols])
     print(f"  wrote {path}")
 
 
-def write_report(path: Path, manifest: List[Dict], summ: Dict):
+def write_report(path: Path, manifest: List[Dict], summ: Dict, model: ParametersModel):
     lines = [
         "# C 検証レポート（intended ↔ actual）",
         "",
         "> 凡例: ✓=一致 / ✗=不一致 / –=対象外。各画像は意図したメタデータを実際に持つか読み戻して検証。",
+        "> 検証列は画像から読み戻せる軸のみ（platform_quicktime は OS/環境条件のためファイルに現れず非検証）。",
         f"> 注: 画像は 640x480 固定で生成（寸法は本仕様のオラクル対象外＝サイズ上限なし）。",
         "",
-        f"**サマリ: 自動生成一致 {summ['match']} / 不一致 {summ['mismatch']} / PSD手動 {summ['manual']}**",
+        f"**サマリ: 自動生成一致 {summ['match']} / 不一致 {summ['mismatch']} / PSD手動 {summ['manual']} / "
+        f"ルール不整合 {summ.get('rule_conflict', 0)}**",
         "",
-        "| case | rule | expected | " + " | ".join(FIELDS) + " | match |",
-        "|" + "---|" * (4 + len(FIELDS)),
+        "| case | rule | rule_action | expected | consistent | " + " | ".join(IMAGE_FIELDS) + " | match |",
+        "|" + "---|" * (6 + len(IMAGE_FIELDS)),
     ]
     for r in manifest:
         cells = []
         checks = r.get("_checks", {})
         if r.get("generation") == "manual":
-            cells = ["–"] * len(FIELDS)
+            cells = ["–"] * len(IMAGE_FIELDS)
             match = "manual"
         else:
-            for k in FIELDS:
+            for k in IMAGE_FIELDS:
                 mk = checks.get(k)
                 mark = "✓" if mk else ("✗" if mk is False else "–")
                 cells.append(f'{r.get(f"intended_{k}")}{mark}')
             match = r.get("match")
-        lines.append(f'| {r["case_id"]} | {r["source_rule"]} | {r["expected"]} | '
-                     + " | ".join(cells) + f" | {match} |")
+        consistent = "✓" if r.get("rule_consistent") == "true" else "✗"
+        lines.append(f'| {r["case_id"]} | {r["source_rule"]} | {r.get("rule_action","")} | '
+                     f'{r["expected"]} | {consistent} | ' + " | ".join(cells) + f" | {match} |")
+    # ルール不整合の詳細（由来ルールの判定と再評価が食い違う = インスタンス化バグの兆候）
+    conflict = [r for r in manifest if r.get("rule_consistent") == "false"]
+    if conflict:
+        lines += ["", "## ルール不整合（rule_action ↔ expected）",
+                  "由来ルールの判定と、生成した具体ケースの再評価が食い違っています（要調査）:"]
+        for r in conflict:
+            lines.append(f'- {r["case_id"]} {r["source_rule"]}: rule_action={r["rule_action"]} ≠ expected={r["expected"]}')
     # 不一致の詳細
     bad = [r for r in manifest if r.get("match") == "false"]
     if bad:
         lines += ["", "## 不一致の詳細（intended → actual）"]
         for r in bad:
-            for k in FIELDS:
+            for k in IMAGE_FIELDS:
                 if r.get("_checks", {}).get(k) is False:
                     lines.append(f'- {r["case_id"]} {k}: intended={r[f"intended_{k}"]} → actual={r[f"actual_{k}"]}')
     # PSD 手動作成の手引き
@@ -213,8 +239,15 @@ def write_report(path: Path, manifest: List[Dict], summ: Dict):
         lines += ["", "## PSD（手動作成対象）",
                   "Photoshop 等で以下の仕様の PSD を作成し out/3_images/ に配置してください:"]
         for r in man:
-            spec = ", ".join(f'{k}={r[f"intended_{k}"]}' for k in FIELDS)
+            spec = ", ".join(f'{k}={r[f"intended_{k}"]}' for k in IMAGE_FIELDS)
             lines.append(f'- {r["case_id"]} ({r["file"]}): {spec} / expected={r["expected"]}')
+    # 前提・仮定（parameters.yaml の notes をそのまま伝搬。expected はこれらに依存する）
+    if model.notes:
+        lines += ["", "## 前提・仮定（expected はこれらに依存／要レビュー）",
+                  "expected 判定は A-2 `parameters.yaml` の以下の前提に基づきます。"
+                  "「要レビュー/推測」を含むものは生成テストにも伝搬している点に注意:"]
+        for n in model.notes:
+            lines.append(f"- {n}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"  wrote {path}")
 

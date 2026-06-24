@@ -85,7 +85,9 @@ def compute_derived(model: ParametersModel, env: Dict) -> Dict:
             if p.plus_if and eval_condition(_cond(p.plus_if.when), env):
                 val = val + p.plus_if.add
             env[p.name] = val
-    # pass 2: relations（physical_* など）
+    # pass 2: relations（physical_* など）。
+    # 注意: relations は「左辺 = 右辺の算術式」を**一方向に評価する代入**として扱う。
+    #       代数的な逆算（任意の変数について解く）は行わない。sympy 等は使っていない。
     for r in model.relations:
         a = _assign(r)
         try:
@@ -128,6 +130,11 @@ def oracle_matched_index(rules: List[VerdictRule], env: Dict) -> int:
         if eval_condition(vr.condition, env):
             return i
     return -1
+
+
+def oracle_all_matches(rules: List[VerdictRule], env: Dict) -> List[int]:
+    """条件が成立する全ルールの index（first-match に隠れた重複の検出に使う）。"""
+    return [i for i, vr in enumerate(rules) if eval_condition(vr.condition, env)]
 
 
 # --------------------------------------------------------------------------- #

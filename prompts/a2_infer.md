@@ -4,7 +4,11 @@
 画像メタデータの **テストパラメータ因果モデル** を `out/1b_parameters/parameters.yaml` として作成します。
 判断の根拠は必ず転記内の記述に求め、推測した箇所は `notes` に明記してください。
 
-## 出力スキーマ（`src/schema/parameters.schema.json` に準拠）
+## 出力スキーマ
+> 注意: `src/schema/parameters.schema.json` は **構造の目安** にすぎません（`name` と `kind` 程度しか必須にできない）。
+> kind 別の必須フィールド・DSL 式の妥当性・oracle の網羅/矛盾は **`src/a2_lint.py`（pydantic＋DSL＋oracle検査）が権威**です。
+> JSON Schema だけで valid でも a2_lint で不合格になり得ます。**必ず a2_lint を通して**ください。
+
 - `source`: 出典（転記ファイル名や仕様ページ名）
 - `parameters[]`: 各パラメータ。`kind` で分類する。
   - `independent`: 自由に選べる軸。`values: [...]`
@@ -20,7 +24,7 @@
 - `notes[]`: 推測・将来の軸候補など
 
 ## DSL（式の文法・可読性優先）
-- 比較: `is` / `is not` / `in [..]` / `> < >= <=`
+- 比較: `is` / `is not` / `in [..]` / `> < >= <=`（`=`/`!=`/`<>` も同義だが、可読性のため `is`/`is not` を推奨）
 - 論理: `and` / `or` / `not` / `( )`
 - 算術: `+ - * / ( )`
 - ルール: `when <条件> then <条件 | usable | unusable>`

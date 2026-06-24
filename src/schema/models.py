@@ -67,6 +67,14 @@ class Limits(BaseModel):
 
 
 class ParametersModel(BaseModel):
+    """parameters.yaml の型付きモデル。
+
+    重要: 生成される JSON Schema（parameters.schema.json）は **構造の目安** にすぎず、
+    各 parameter の kind 別必須フィールド（independent→values, derived→lookup|expr,
+    coupled→group+partitions）や DSL 式の妥当性・oracle の網羅/矛盾は表現しません。
+    それらは pydantic の検証（このモデル）と `src/a2_lint.py` が **権威ある検証** として担います。
+    JSON Schema 単体で valid でも a2_lint で不合格になり得ます。必ず a2_lint を通してください。
+    """
     model_config = ConfigDict(extra="forbid")
     source: str
     parameters: List[Parameter]

@@ -18,7 +18,7 @@
 組合せは **因果の強さで強度を変える**:
 - `interactions` の強相互作用ペアは **フル網羅**、残りの独立因子は **pairwise**、`constraints` で不可能組合せ除去。
 - これを **Microsoft PICT** の sub-model / constraints で表現（エンジンに採用）。派生メンバは決定要因へ写像
-  （例 `channels`→`{color_mode, alpha}`）。relations は sympy 想定。
+  （例 `channels`→`{color_mode, alpha}`）。
 
 ## Alternatives considered
 - 素のペアワイズのみ: 因果を無視し上記3問題が発生。却下。
@@ -29,3 +29,8 @@
 - 強相互作用（channels×bit_depth 等）の取りこぼしを防ぎつつ、規模を抑えられる。
 - PICT 外部依存（`brew install pict`）が増える。
 - 派生/連動の扱いを B が一貫処理（`src/derive.py` 共有エンジン）。
+
+## 実装メモ（as-built）
+- relations は当初 sympy による代数的解法を想定したが、実際の用途は派生値の一方向計算だけだったため、
+  **DSL の「左辺 = 右辺」を一方向に評価する代入**として実装（`src/derive.py` compute_derived pass2）。
+  逆算（任意の変数について解く）は行わず、未使用の sympy 依存は削除した。必要になれば再検討する。
